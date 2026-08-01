@@ -1,3 +1,5 @@
+const FILLER_OCR_MISTAKES = "LKCSI1";
+
 function normalizeLine(line) {
   return line
     .toUpperCase()
@@ -6,50 +8,138 @@ function normalizeLine(line) {
     .replace(/[^A-Z0-9<]/g, "");
 }
 
-function normalizeLength(line) {
-  if (line.length === 44) {
-    return line;
-  }
-
-  // TD3 lines are fixed at 44 chars. Extra trailing fillers are OCR spillover.
-  if (line.length > 44 && line.length <= 46 && /^P[A-Z0-9<]/.test(line)) {
-    return line.slice(0, 44);
-  }
-
-  if (line.length > 44 && line.length <= 46 && /^[A-Z0-9<]{9}[0-9][A-Z<]{3}[0-9]{6}/.test(line)) {
-    return line.slice(0, 44);
-  }
-
-  return line;
+function isFillerMistake(char) {
+  return FILLER_OCR_MISTAKES.includes(char);
 }
 
-function repairFirstLineFillers(line) {
-  if (!line.startsWith("P") || line.length < 40 || line.length > 46) {
-    return line;
+function isFillerLike(char) {
+  return char === "<" || isFillerMistake(char);
+}
+
+function countFillerLike(value) {
+  return [...value].filter(isFillerLike).length;
+}
+
+function fixMissingNameSeparator(nameField) {
+  if (nameField.includes("<<")) {
+    return nameField;
   }
 
-  const fillerMistakes = (line.match(/[LC]/g) || []).length;
-  const realFillers = (line.match(/</g) || []).length;
+  const chars = [...nameField];
+  const firstSeparator = chars.indexOf("<");
 
-  if (realFillers > 6 || fillerMistakes < 8) {
+  if (firstSeparator >= 0 && isFillerMistake(chars[firstSeparator + 1])) {
+    chars[firstSeparator + 1] = "<";
+  }
+
+  if (firstSeparator > 0 && isFillerMistake(chars[firstSeparator - 1])) {
+    chars[firstSeparator - 1] = "<";
+  }
+
+  return chars.join("");
+}
+
+function cleanTrailingFiller(value) {
+  const match = value.match(/[<LKCSI1]{3,}$/);
+
+  if (!match) {
+    return value;
+  }
+
+  const run = match[0];
+  const runStart = value.length - run.length;
+  let cleanValue = value.slice(0, runStart);
+  let fillerText = run;
+
+  while (
+    fillerText.length > 1 &&
+    fillerText[0] !== "<" &&
+    fillerText[1] !== "<" &&
+    fillerText[0] !== fillerText[1] &&
+    cleanValue.length >= 3
+  ) {
+    cleanValue += fillerText[0];
+    fillerText = fillerText.slice(1);
+  }
+
+  // Preserve one possible real final letter, like the last L in SHAKIL.
+  if (fillerText[0] !== "<" && fillerText[1] !== "<" && cleanValue.length >= 3) {
+    cleanValue += fillerText[0];
+    fillerText = fillerText.slice(1);
+  }
+
+  return cleanValue + "<".repeat(fillerText.length);
+}
+
+function cleanTD3NameField(nameField) {
+  const repairedNameField = fixMissingNameSeparator(nameField);
+  const separatorIndex = repairedNameField.indexOf("<<");
+
+  if (separatorIndex === -1) {
+    return repairedNameField;
+  }
+
+  const lastName = repairedNameField.slice(0, separatorIndex);
+  const firstNames = repairedNameField.slice(separatorIndex + 2);
+
+  return `${lastName}<<${cleanTrailingFiller(firstNames)}`;
+}
+
+function getDifferenceCount(left, right) {
+  if (!left || !right || left.length !== right.length) {
+    return 99;
+  }
+
+  return [...left].filter((char, index) => char !== right[index]).length;
+}
+
+function repairIssuingState(value, nationality) {
+  if (!/^[A-Z]{3}$/.test(nationality || "")) {
+    return value;
+  }
+
+  if (value === nationality) {
+    return value;
+  }
+
+  // Use line 2 nationality only for a near-match OCR slip, e.g. BED -> BGD.
+  if (getDifferenceCount(value, nationality) <= 1) {
+    return nationality;
+  }
+
+  return value;
+}
+
+function cleanTD3FirstLine(line, nationality) {
+  if (!line.startsWith("P") || line.length < 40 || line.length > 60) {
     return line;
   }
 
   const chars = [...line];
-  const firstSeparator = chars.findIndex((char, index) => index > 5 && char === "<");
-  const repairStart = firstSeparator > 0 ? Math.max(5, firstSeparator - 1) : 5;
 
-  for (let index = repairStart; index < chars.length; index += 1) {
-    if (chars[index] === "L" || chars[index] === "C") {
-      chars[index] = "<";
-    }
+  if (isFillerMistake(chars[1])) {
+    chars[1] = "<";
   }
 
-  return chars.join("").slice(0, 44);
+  const documentCode = chars.slice(0, 2).join("");
+  const issuingState = repairIssuingState(chars.slice(2, 5).join(""), nationality);
+  const nameField = chars.slice(5).join("");
+  const cleanedNameField = cleanTD3NameField(nameField);
+  let cleanedLine = `${documentCode}${issuingState}${cleanedNameField}`;
+
+  if (cleanedLine.length > 44 && countFillerLike(cleanedLine.slice(44)) === cleanedLine.length - 44) {
+    cleanedLine = cleanedLine.slice(0, 44);
+  }
+
+  if (cleanedLine.length < 44 && countFillerLike(cleanedLine.slice(-6)) >= 4) {
+    cleanedLine = cleanedLine.padEnd(44, "<");
+  }
+
+  return cleanedLine;
 }
 
 function looksLikeTD3FirstLine(line) {
-  return line.length === 44 && line.startsWith("P") && line.includes("<<");
+  return line.length === 44 && line.startsWith("P") && line.slice(1, 2) === "<" && line.includes("<<");
 }
 
 function looksLikeTD3SecondLine(line) {
@@ -59,7 +149,7 @@ function looksLikeTD3SecondLine(line) {
 function isCandidateLine(line) {
   return (
     line.length >= 40 &&
-    line.length <= 46 &&
+    line.length <= 60 &&
     (line.includes("<") || line.startsWith("P") || looksLikeTD3SecondLine(line))
   );
 }
@@ -69,23 +159,27 @@ export function extractMRZ(text) {
     throw new Error("No OCR text was available for MRZ extraction.");
   }
 
-  const lines = text
+  const normalizedLines = text
     .split(/\r?\n/)
     .map(normalizeLine)
-    .map(repairFirstLineFillers)
-    .map(normalizeLength)
     .filter(Boolean);
 
-  const mrzCandidates = [...new Set(lines.filter(isCandidateLine))];
+  const candidateLines = normalizedLines.filter(isCandidateLine);
+  const detectedSecondLines = candidateLines.filter(looksLikeTD3SecondLine);
+  const nationality = detectedSecondLines[0]?.slice(10, 13) || "";
+  const cleanedCandidates = [
+    ...new Set(candidateLines.map((line) => (line.startsWith("P") ? cleanTD3FirstLine(line, nationality) : line))),
+  ];
 
-  console.log("MRZ Candidates:", mrzCandidates);
+  console.log("Detected MRZ:", candidateLines);
+  console.log("MRZ cleanup result:", cleanedCandidates);
   console.log(
     "MRZ Lengths:",
-    mrzCandidates.map((line) => line.length)
+    cleanedCandidates.map((line) => line.length)
   );
 
-  const firstLines = mrzCandidates.filter(looksLikeTD3FirstLine);
-  const secondLines = mrzCandidates.filter(looksLikeTD3SecondLine);
+  const firstLines = cleanedCandidates.filter(looksLikeTD3FirstLine);
+  const secondLines = cleanedCandidates.filter(looksLikeTD3SecondLine);
 
   if (firstLines.length > 0 && secondLines.length > 0) {
     return [firstLines[0], secondLines[0]];

@@ -18,6 +18,15 @@ export function parseMRZ(mrzLines) {
     console.log("Parsed MRZ:", parsed);
 
     const fields = parsed.fields || {};
+
+    if (parsed.format !== "TD3") {
+      throw new Error("MRZ parsing failed: expected a TD3 passport MRZ.");
+    }
+
+    if (!fields.documentNumber || !fields.issuingState || !fields.nationality) {
+      throw new Error("MRZ parsing failed: required passport fields are missing.");
+    }
+
     const firstName = fields.firstName || "";
     const lastName = fields.lastName || "";
 
