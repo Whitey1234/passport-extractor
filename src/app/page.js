@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { recognizePassportImage } from "@/lib/ocr/tesseract";
 import { extractMRZ } from "@/lib/mrz/extractMRZ";
+import { repairDocumentNumber } from "@/lib/mrz/repairDocumentNumber";
 import { parseMRZ } from "@/lib/mrz/parseMRZ";
 import { formatPassportData } from "@/lib/mrz/formatPassportData";
 import PassportUploader from "@/components/passport/PassportUploader";
@@ -59,7 +60,8 @@ export default function Home() {
       setStatus("Extracting MRZ...");
 
       const mrzLines = extractMRZ(text);
-      const parsed = parseMRZ(mrzLines);
+      const repairedLines = repairDocumentNumber(mrzLines);
+      const parsed = parseMRZ(repairedLines);
       const formatted = formatPassportData(parsed);
 
       setProgress(100);
