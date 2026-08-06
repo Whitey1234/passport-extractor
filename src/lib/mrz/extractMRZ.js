@@ -47,7 +47,8 @@ function createSeparatorCandidate(nameField, separatorIndex) {
   }
 
   // TD3 line 1 is: surname << given-names, then filler characters.
-  const cleanedFirstNames = cleanTrailingFiller(rawFirstNames);
+  // TD3 line 1 is: surname << given-names, then filler characters.
+  const cleanedFirstNames = cleanTrailingFiller(cleanLeadingFiller(rawFirstNames));
   const visibleFirstNames = getVisibleName(cleanedFirstNames);
 
   if (!visibleFirstNames || /[0-9]/.test(lastName + visibleFirstNames)) {
@@ -66,7 +67,11 @@ function createSeparatorCandidate(nameField, separatorIndex) {
 
   score += Math.min(visibleFirstNames.length, 12);
   score += Math.min(getTrailingFillerLikeCount(rawFirstNames), 20);
-
+  // Tie-breaker: when two candidates score equally, prefer the one that
+  // keeps more of the surname intact (e.g. "TAREK" over "TARE") rather
+  // than the accidental first-found split.
+  score += lastName.length * 0.01;
+  
   if (lastName.includes("<")) {
     score -= 4;
   }
@@ -101,6 +106,29 @@ function fixMissingNameSeparator(nameField) {
   }
 
   return candidates.sort((left, right) => right.score - left.score)[0].field;
+}
+function cleanLeadingFiller(value) {
+  const match = value.match(/^[<LKCSI1]+/);
+  if (!match) return value;
+
+  const run = match[0];
+
+  // Only treat this as corrupted-separator debris if the leading run
+  // contains a literal '<'. A pure run of letters (e.g. name starting
+  // with "K" like "KAMAL") is more likely a real name, not OCR noise —
+  // so we leave it alone in that case.
+  if (!run.includes("<")) {
+    return value;
+  }
+
+  const rest = value.slice(run.length);
+
+  // Only strip if what remains still looks like a real name.
+  if (/^[A-Z]{2,}/.test(rest)) {
+    return rest;
+  }
+
+  return value;
 }
 
 function cleanTrailingFiller(value) {
