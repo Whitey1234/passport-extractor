@@ -1,32 +1,34 @@
 "use client";
 
 import Image from "next/image";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function ImagePreview({ fileUrl, fileName }) {
   if (!fileUrl) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Preview</CardTitle>
-        </CardHeader>
-        <CardContent className="flex h-56 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
-          Upload an image to see a preview here.
+      <Card className="border-0 bg-white shadow-none ring-0">
+        <CardContent className="grid h-44 place-items-center rounded-xl border border-dashed border-pass-line text-center text-sm text-muted-foreground">
+          Your passport photo will appear here.
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Image preview</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <div className="relative h-72 overflow-hidden rounded-md border">
-          <Image src={fileUrl} alt={fileName || "Passport preview"} fill className="object-contain" />
+    <Card className="overflow-hidden border-0 bg-white shadow-none ring-0">
+      <CardContent className="p-0">
+        <div className="relative h-56 w-full overflow-hidden rounded-xl bg-pass-paper sm:h-64">
+          <Image
+            src={fileUrl}
+            alt={fileName || "Passport preview"}
+            fill
+            sizes="(max-width: 640px) 100vw, 40vw"
+            className="object-contain p-2"
+          />
         </div>
-        <p className="text-sm text-muted-foreground">{fileName}</p>
+        <p className="truncate px-1 pt-2 font-mono text-xs text-muted-foreground">
+          {fileName || "image"}
+        </p>
       </CardContent>
     </Card>
   );
