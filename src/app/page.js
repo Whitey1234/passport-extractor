@@ -10,6 +10,7 @@ import PassportUploader from "@/components/passport/PassportUploader";
 import ImagePreview from "@/components/passport/ImagePreview";
 import ScanProgress from "@/components/passport/ScanProgress";
 import PassportResult from "@/components/passport/PassportResult";
+import ScanError from "@/components/passport/ScanError";
 
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -18,6 +19,7 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("Waiting for upload");
   const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
 
   async function handleFileSelect(file) {
     if (!file) {
@@ -40,6 +42,7 @@ export default function Home() {
       return URL.createObjectURL(file);
     });
     setResult(null);
+    setError(null);
     setIsScanning(true);
     setProgress(10);
     setStatus("Preparing OCR...");
@@ -57,7 +60,7 @@ export default function Home() {
 
       console.log("Raw OCR:", text);
       setProgress(60);
-      setStatus("Extracting MRZ...");
+      setStatus("Reading the machine-readable zone...");
 
       const mrzLines = extractMRZ(text);
       const repairedLines = repairDocumentNumber(mrzLines);
@@ -67,38 +70,60 @@ export default function Home() {
       setProgress(100);
       setStatus("Done");
       setResult(formatted);
-    } catch (error) {
-      console.error(error);
-      setStatus(error?.message || "Scan failed. Please try another image.");
+    } catch (err) {
+      console.error(err);
+      setStatus(err?.message || "Scan failed. Please try another image.");
+      setError(err?.message || "The machine zone could not be read from this photo.");
       setResult(null);
     } finally {
       setIsScanning(false);
     }
   }
 
+  function handleRetry() {
+    setSelectedFile(null);
+    setPreviewUrl((currentUrl) => {
+      if (currentUrl) {
+        URL.revokeObjectURL(currentUrl);
+      }
+      return "";
+    });
+    setResult(null);
+    setError(null);
+    setIsScanning(false);
+    setProgress(0);
+    setStatus("Waiting for upload");
+  }
+
   return (
-    <main className="min-h-screen bg-zinc-50 px-4 py-10 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <header className="space-y-2">
-          <p className="text-sm font-medium uppercase tracking-[0.3em] text-zinc-500">
-            Passport OCR
+    <main className="min-h-screen bg-pass-paper text-pass-ink">
+      <div className="mx-auto max-w-3xl px-4 pt-12 pb-16 sm:px-6">
+        <header className="doc-edge">
+          <p className="font-display text-2xl font-bold tracking-tight text-pass-ink">
+            PASSPORT <span className="font-normal text-pass-foil">/</span> EXTRACTOR
           </p>
-          <h1 className="text-4xl font-semibold tracking-tight">Extract passport data from images</h1>
-          <p className="max-w-2xl text-sm text-zinc-600 dark:text-zinc-300">
-            Upload a passport image to run OCR, detect the MRZ, and view the parsed traveler information.
+          <p className="mt-1 max-w-md text-sm text-muted-foreground">
+            Read your passport&apos;s machine-readable zone and copy the record in plain text.
           </p>
         </header>
 
-        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="space-y-6">
-            <PassportUploader onFileSelect={handleFileSelect} isScanning={isScanning} />
-            <ScanProgress status={status} progress={progress} />
-          </div>
-          <div className="space-y-6">
-            <ImagePreview fileUrl={previewUrl} fileName={selectedFile?.name} />
-            <PassportResult data={result} />
-          </div>
+        <div className="mt-10 space-y-6">
+          <PassportUploader onFileSelect={handleFileSelect} isScanning={isScanning} />
+
+          {isScanning && <ScanProgress status={status} progress={progress} />}
+
+          {previewUrl && !error && <ImagePreview fileUrl={previewUrl} fileName={selectedFile?.name} />}
+
+          {!isScanning && result && <PassportResult data={result} />}
+
+          {!isScanning && error && <ScanError message={error} onRetry={handleRetry} />}
         </div>
+
+        <footer className="mt-14 border-t border-pass-line pt-4 font-mono text-xs leading-relaxed text-muted-foreground">
+          Photos are read inside your browser — nothing is uploaded.
+          <span className="mx-2 text-pass-foil">·</span>
+          TD3 machine-readable passports only.
+        </footer>
       </div>
     </main>
   );
